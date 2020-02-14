@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: smb-bucket-service
+  annotations:
+    cloud.google.com/load-balancer-type: Internal
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+  - port: 445
+    targetPort: 445
+    protocol: TCP
+    name: smb
+  selector:
+    app: smb-bucket-server
+  sessionAffinity: None
+  type: LoadBalancer
+
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: smb-bucket-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: smb-bucket-server
+  template:
+    metadata:
+      labels:
+        app: smb-bucket-server
+    spec:
+      volumes:
+        - name: service-account-secret
+          secret:
+            secretName: service-account-secret        
+      dnsPolicy: Default
+      containers:
+      - name:  smb-bucket-server
+        image: gcr.io/<your-project-id>/smb-bucket-server:latest
+        volumeMounts:
+          - name: service-account-secret
+            mountPath: "/accounts"
+            readOnly: true
+        securityContext:
+          privileged: true
+
+---
+
+apiVersion: "autoscaling/v2beta1"
+kind: "HorizontalPodAutoscaler"
+metadata:
+  name: "smb-bucket-server-hpa"
+  labels:
+    app: "smb-bucket-server"
+spec:
+  scaleTargetRef:
+    kind: "Deployment"
+    name: "smb-bucket-server"
+    apiVersion: "apps/v1"
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: "Resource"
+    resource:
+      name: "cpu"
+      targetAverageUtilization: 80
